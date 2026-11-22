@@ -1,15 +1,15 @@
 # Investigación de widgets de Flutter
 
 - **Estudiante:** Julian Londoño Cardona
-- **Grupo:** 60X  <!-- cambiar por 601 o 602 -->
-- **Fecha:** XX de noviembre de 2026
+- **Grupo:** 601
+- **Fecha:** 22 de noviembre de 2026
 - **Asignatura:** Programación Móvil (IF2004) – IUE 2026-02
 
 ## Mis widgets
 
 1. `Dismissible`
-2. `Badge`
-3. `ExpansionTile`
+2. `RefreshIndicator`
+3. `Stepper`
 
 > Todos los ejemplos son programas completos: se copian tal cual en [DartPad](https://dartpad.dev) y se ejecutan.
 
@@ -241,21 +241,25 @@ class _CarritoPersonalizadoState extends State<CarritoPersonalizado> {
 
 ---
 
-## 2. Badge
+## 2. RefreshIndicator
 
 ### Qué es y para qué sirve
 
-`Badge` pone una **etiqueta pequeña encima de otro widget**, normalmente un ícono, para avisar que hay algo pendiente. Puede ser un número (3 productos en el carrito) o solo un punto (hay mensajes nuevos). Es parte de Material 3.
+`RefreshIndicator` agrega el gesto de **"halar hacia abajo para recargar"** (*pull to refresh*) a una lista o cualquier contenido con scroll. Cuando el usuario arrastra desde arriba, aparece un círculo de carga que gira mientras se ejecuta la función `onRefresh`. Cuando esa función termina, el círculo desaparece solo.
 
-Si no existiera, tendría que montar un `Stack` con un `Positioned` y un `Container` redondo, y ajustar a mano el tamaño, el color y la posición para que no tape el ícono.
+Si no existiera, tendría que detectar el arrastre más allá del inicio de la lista, dibujar y animar el indicador, y saber cuándo esconderlo. Así que lo normal sería poner un botón de "Recargar", que es menos natural en el celular.
 
 ### Cuándo usarlo y cuándo no
 
-- **Usarlo:** para contadores o avisos cortos sobre íconos: carrito, notificaciones, mensajes, destinos de una `NavigationBar`.
+- **Usarlo:** en listas cuyos datos cambian y se traen de un servidor, como productos disponibles, pedidos o notificaciones.
 - **No usarlo:**
-  - Para mostrar texto largo o etiquetas de categoría ("Orgánico", "Oferta"). Para eso sirven `Chip` o un `Container` con texto.
-  - Como botón: `Badge` no responde a toques. Si necesito una acción, el `Badge` va dentro de un `IconButton`, no al revés.
-  - **Error típico:** pensar que `Badge` cuenta solo. Es solo decoración: el número lo tengo que manejar yo con el estado y volver a dibujar.
+  - Si los datos no cambian (una lista fija de categorías o una pantalla de ayuda). El gesto no hace nada útil.
+  - Si los datos se actualizan solos en tiempo real (por ejemplo con un `StreamBuilder`). Ahí no hace falta recargar a mano.
+  - Para cargar **más** elementos al llegar al final de la lista. Eso es scroll infinito y se hace de otra forma.
+  - **Errores típicos:**
+    - Poner como `child` algo que **no tiene scroll** (un `Column` o un `Center`). El gesto no se detecta y no pasa nada.
+    - Si el contenido con scroll tiene un `physics` que no deja desplazar cuando la lista es corta, tampoco se puede halar. Se asegura con `physics: AlwaysScrollableScrollPhysics()`.
+    - `onRefresh` debe devolver un `Future`. Si la función no espera (`await`) la carga, el círculo desaparece antes de que lleguen los datos.
 
 ### Ejemplo mínimo
 
@@ -271,13 +275,35 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: const Text('Badge mínimo')),
-        body: const Center(
-          child: Badge(
-            label: Text('3'),
-            child: Icon(Icons.shopping_cart, size: 40),
-          ),
-        ),
+        appBar: AppBar(title: const Text('RefreshIndicator mínimo')),
+        body: const ListaProductos(),
+      ),
+    );
+  }
+}
+
+class ListaProductos extends StatefulWidget {
+  const ListaProductos({super.key});
+
+  @override
+  State<ListaProductos> createState() => _ListaProductosState();
+}
+
+class _ListaProductosState extends State<ListaProductos> {
+  final List<String> productos = ['Papa', 'Tomate', 'Cebolla'];
+
+  Future<void> _recargar() async {
+    await Future.delayed(const Duration(seconds: 2)); // simula el servidor
+    setState(() => productos.insert(0, 'Producto nuevo ${productos.length + 1}'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: _recargar,
+      child: ListView.builder(
+        itemCount: productos.length,
+        itemBuilder: (context, index) => ListTile(title: Text(productos[index])),
       ),
     );
   }
@@ -286,32 +312,35 @@ class MyApp extends StatelessWidget {
 
 ### Explicación del ejemplo
 
-- `child` es el widget que se decora, en este caso el ícono del carrito.
-- `label` es lo que va dentro del círculo rojo, aquí el texto `'3'`.
-- Por defecto el `Badge` queda en la esquina superior derecha del `child`, con fondo rojo (el color de error del tema) y texto blanco.
+- El `RefreshIndicator` envuelve al `ListView`, que es el que tiene scroll.
+- `onRefresh` recibe la función `_recargar`, que es `async` y devuelve `Future<void>`.
+- `Future.delayed` de 2 segundos hace de cuenta que estamos pidiendo datos a un servidor. Mientras ese `Future` no termina, el círculo sigue girando.
+- Al terminar, agrego un producto al inicio con `setState` para que se vea el cambio.
 
 **Lo que pasó cuando lo rompí a propósito:**
-- Sin `label` se dibuja solo un **punto pequeño**. Eso sirve para decir "hay algo nuevo" sin dar un número.
-- Con `label: Text('Productos en carrito')` el círculo se estira y queda feo y montado sobre el ícono. Así confirmé que es para textos muy cortos.
+- Si cambio el `ListView` por un `Column` con los textos, al halar hacia abajo no aparece nada. El `RefreshIndicator` necesita un hijo con scroll.
+- Si quito el `await` del `Future.delayed`, el círculo aparece y desaparece de una vez, y el producto se agrega antes de los 2 segundos.
+- Si le pongo al `ListView` `physics: const NeverScrollableScrollPhysics()`, la lista ya no se mueve y el gesto de recargar tampoco funciona.
 
 ### Propiedades importantes
 
 | Propiedad | Qué hace | Valor de ejemplo |
 |---|---|---|
-| `label` | Contenido de la etiqueta. Si es `null` se dibuja un punto. | `Text('5')` |
-| `isLabelVisible` | Muestra u oculta todo el badge sin quitarlo del árbol. | `cantidad > 0` |
-| `backgroundColor` | Color del fondo de la etiqueta. | `Colors.green` |
-| `textColor` | Color del texto de la etiqueta. | `Colors.white` |
-| `smallSize` | Diámetro del punto cuando no hay `label`. | `10` |
-| `largeSize` | Alto de la etiqueta cuando tiene `label`. | `20` |
-| `offset` | Mueve la etiqueta respecto a su posición normal. | `Offset(6, -6)` |
-| `Badge.count(count: n)` | Constructor que convierte un número en el texto de la etiqueta. | `Badge.count(count: carrito.length)` |
+| `onRefresh` | Función que se ejecuta al soltar. Debe devolver un `Future`; el círculo gira hasta que termina. Es obligatoria. | `_recargar` |
+| `child` | Contenido con scroll que se puede halar. Es obligatorio. | `ListView.builder(...)` |
+| `color` | Color del círculo que gira. | `Colors.green` |
+| `backgroundColor` | Color del fondo redondo detrás del círculo. | `Colors.white` |
+| `displacement` | Qué tan abajo queda el círculo mientras carga. | `60` |
+| `strokeWidth` | Grosor de la línea del círculo. | `3` |
+| `triggerMode` | Si el gesto funciona solo desde el borde de arriba o desde cualquier posición. | `RefreshIndicatorTriggerMode.anywhere` |
+| `RefreshIndicator.adaptive` | Variante que en iOS usa el indicador estilo Cupertino. Cuenta como el mismo widget. | `RefreshIndicator.adaptive(...)` |
 
 ### Ejemplo personalizado
 
-Contador del carrito que **cambia en vivo**. Se oculta cuando llega a 0, usa los colores de la app y además hay un punto en las notificaciones.
+Lista de productos disponibles en Mercado Campesino. Se puede recargar halando hacia abajo **o** con un botón en la barra superior (usando una `GlobalKey`), con colores de la app y un aviso al terminar.
 
 ```dart
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 void main() => runApp(const MyApp());
@@ -323,65 +352,81 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData(colorSchemeSeed: Colors.green),
-      home: const TiendaPage(),
+      home: const ProductosPage(),
     );
   }
 }
 
-class TiendaPage extends StatefulWidget {
-  const TiendaPage({super.key});
+class ProductosPage extends StatefulWidget {
+  const ProductosPage({super.key});
 
   @override
-  State<TiendaPage> createState() => _TiendaPageState();
+  State<ProductosPage> createState() => _ProductosPageState();
 }
 
-class _TiendaPageState extends State<TiendaPage> {
-  int cantidad = 0;
-  bool hayNotificaciones = true;
+class _ProductosPageState extends State<ProductosPage> {
+  final _refreshKey = GlobalKey<RefreshIndicatorState>();
+  final _aleatorio = Random();
+  final List<String> catalogo = [
+    'Papa criolla', 'Mora', 'Lulo', 'Queso campesino',
+    'Arveja', 'Huevos de campo', 'Cilantro', 'Panela',
+  ];
+  List<String> disponibles = ['Papa criolla', 'Mora'];
+  DateTime? ultimaActualizacion;
+
+  Future<void> _recargar() async {
+    await Future.delayed(const Duration(seconds: 2)); // simula el servidor
+    setState(() {
+      disponibles = (catalogo.toList()..shuffle(_aleatorio))
+          .take(2 + _aleatorio.nextInt(5))
+          .toList();
+      ultimaActualizacion = DateTime.now();
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${disponibles.length} productos disponibles')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hora = ultimaActualizacion == null
+        ? 'Hala hacia abajo para actualizar'
+        : 'Actualizado a las ${ultimaActualizacion!.hour}:'
+            '${ultimaActualizacion!.minute.toString().padLeft(2, '0')}';
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mercado Campesino'),
+        title: const Text('Disponibles hoy'),
         actions: [
           IconButton(
-            icon: Badge(
-              isLabelVisible: hayNotificaciones,
-              smallSize: 10,
-              backgroundColor: Colors.orange,
-              child: const Icon(Icons.notifications),
-            ),
-            onPressed: () => setState(() => hayNotificaciones = false),
-          ),
-          IconButton(
-            icon: Badge.count(
-              count: cantidad,
-              isLabelVisible: cantidad > 0,
-              backgroundColor: Colors.green.shade800,
-              textColor: Colors.white,
-              largeSize: 20,
-              offset: const Offset(8, -6),
-              child: const Icon(Icons.shopping_cart),
-            ),
-            onPressed: () {},
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refreshKey.currentState?.show(),
           ),
         ],
       ),
-      body: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.remove_circle, size: 40),
-              onPressed: cantidad == 0 ? null : () => setState(() => cantidad--),
-            ),
-            Text('$cantidad', style: const TextStyle(fontSize: 32)),
-            IconButton(
-              icon: const Icon(Icons.add_circle, size: 40),
-              onPressed: () => setState(() => cantidad++),
-            ),
-          ],
+      body: RefreshIndicator(
+        key: _refreshKey,
+        onRefresh: _recargar,
+        color: Colors.green.shade800,
+        backgroundColor: Colors.green.shade50,
+        displacement: 60,
+        strokeWidth: 3,
+        child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount: disponibles.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(hora, style: const TextStyle(color: Colors.grey)),
+              );
+            }
+            return ListTile(
+              leading: const Icon(Icons.eco, color: Colors.green),
+              title: Text(disponibles[index - 1]),
+            );
+          },
         ),
       ),
     );
@@ -390,43 +435,44 @@ class _TiendaPageState extends State<TiendaPage> {
 ```
 
 **Qué cambié respecto al mínimo:**
-- Usé `Badge.count` para pasarle el número directamente, sin armar el `Text`.
-- Con `isLabelVisible: cantidad > 0` el badge desaparece cuando el carrito está vacío. No se ve un "0".
-- Cambié colores, tamaño y posición con `backgroundColor`, `textColor`, `largeSize` y `offset` para que combine con el verde de la app.
-- La campana tiene un **punto naranja** sin `label` que se apaga al tocarla.
-- El `Badge` está **dentro** del `IconButton`, así el botón sigue recibiendo los toques.
+- Cambié el aspecto del indicador con `color`, `backgroundColor`, `displacement` y `strokeWidth` para que combine con el verde de la app.
+- Puse `physics: AlwaysScrollableScrollPhysics()` para que se pueda halar aunque haya solo 2 productos.
+- Agregué una `GlobalKey<RefreshIndicatorState>`. Con `_refreshKey.currentState?.show()` el botón de la barra muestra el mismo indicador y ejecuta la misma recarga, sin que el usuario tenga que halar.
+- Cada recarga cambia de verdad la lista (escoge productos al azar del catálogo), muestra la hora de la última actualización y un `SnackBar` con cuántos productos hay.
+- Antes de mostrar el `SnackBar` reviso `mounted`, porque si el usuario salió de la pantalla durante la espera ya no hay `context` válido.
 
 ### Dónde lo usaría en Mercado Campesino
 
-- En el ícono del **carrito**, con la cantidad de productos.
-- En la **campana de notificaciones**, como punto de "hay algo nuevo".
-- En la `NavigationBar` inferior, sobre la pestaña de **pedidos**, con los pedidos pendientes de un productor.
+- En la **lista de productos disponibles hoy**, porque los productores van publicando y agotando productos durante el día.
+- En **mis pedidos**, para ver si el productor ya confirmó o despachó.
+- En la **lista de productores cercanos**, después de que el usuario cambia de ubicación.
 
 ### Fuentes y ayudas usadas
 
-- Documentación oficial: https://api.flutter.dev/flutter/material/Badge-class.html
-- Guía de Material 3 sobre badges: https://m3.material.io/components/badges/overview
+- Documentación oficial: https://api.flutter.dev/flutter/material/RefreshIndicator-class.html
 - Apoyo de IA (Claude, de Anthropic) para organizar el documento y armar un primer borrador de los ejemplos. Ejecuté, modifiqué y rompí los ejemplos en DartPad para verificar cómo se comportan.
 
 ---
 
-## 3. ExpansionTile
+## 3. Stepper
 
 ### Qué es y para qué sirve
 
-`ExpansionTile` es una fila con título (parecida a un `ListTile`) que al tocarla **se despliega y muestra más contenido** debajo. Al tocarla otra vez se pliega. Trae la flecha que gira y la animación de abrir y cerrar.
+`Stepper` muestra un **proceso dividido en pasos numerados** que se recorren en orden: paso 1, paso 2, paso 3… Cada paso tiene un título, un contenido y un estado (pendiente, en edición, completo o con error). Trae botones para avanzar y retroceder.
 
-Sirve para no llenar la pantalla: el usuario ve primero los títulos y solo abre lo que le interesa. Si no existiera, tendría que manejar un `bool` de abierto o cerrado, animar la altura y girar la flecha a mano.
+Sirve para procesos largos que asustarían en una sola pantalla, como un registro o una compra. El usuario ve en qué paso va y cuánto le falta. Si no existiera, tendría que dibujar los círculos numerados, las líneas que los unen, los botones y manejar qué contenido se muestra en cada momento.
 
 ### Cuándo usarlo y cuándo no
 
-- **Usarlo:** para preguntas frecuentes, detalles opcionales de un elemento o listas agrupadas por categoría.
+- **Usarlo:** en procesos de varios pasos con un orden claro: pagar un pedido, registrarse como productor, publicar un producto.
 - **No usarlo:**
-  - Si la información es importante y el usuario siempre la debe ver. Escondida en un desplegable, se la puede saltar.
-  - Si el contenido de adentro es muy largo o es otra pantalla completa. Es mejor navegar a una pantalla de detalle.
+  - Si son solo 1 o 2 campos. Un formulario normal es más rápido.
+  - Si el usuario puede ir a cualquier sección en cualquier orden. Para eso son mejores las pestañas (`TabBar`).
+  - Si los pasos son pantallas muy grandes. Puede ser mejor navegar entre pantallas o usar un `PageView`.
   - **Errores típicos:**
-    - Ponerlo dentro de un `Column` sin scroll: al abrir varios se desborda (franja amarilla y negra).
-    - Esperar que `initiallyExpanded` lo abra o cierre cuando cambio una variable. Solo se tiene en cuenta la primera vez que se construye.
+    - Creer que `Stepper` avanza solo. No es así: yo guardo `currentStep` en el estado y lo cambio en `onStepContinue` y `onStepCancel`. Si no lo hago, los botones no hacen nada.
+    - Sumar 1 a `currentStep` en el último paso. El índice se sale de la lista de pasos y la app falla.
+    - En `StepperType.horizontal` con muchos pasos o títulos largos, los títulos no caben y se desbordan.
 
 ### Ejemplo mínimo
 
@@ -442,17 +488,38 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: const Text('ExpansionTile mínimo')),
-        body: const ExpansionTile(
-          title: Text('¿Cómo pago mi pedido?'),
-          children: [
-            Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Puedes pagar en efectivo al recibir o por transferencia.'),
-            ),
-          ],
-        ),
+        appBar: AppBar(title: const Text('Stepper mínimo')),
+        body: const PasosPedido(),
       ),
+    );
+  }
+}
+
+class PasosPedido extends StatefulWidget {
+  const PasosPedido({super.key});
+
+  @override
+  State<PasosPedido> createState() => _PasosPedidoState();
+}
+
+class _PasosPedidoState extends State<PasosPedido> {
+  int pasoActual = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stepper(
+      currentStep: pasoActual,
+      onStepContinue: () {
+        if (pasoActual < 2) setState(() => pasoActual++);
+      },
+      onStepCancel: () {
+        if (pasoActual > 0) setState(() => pasoActual--);
+      },
+      steps: const [
+        Step(title: Text('Carrito'), content: Text('Revisa tus productos.')),
+        Step(title: Text('Dirección'), content: Text('¿Dónde entregamos?')),
+        Step(title: Text('Pago'), content: Text('Elige cómo pagar.')),
+      ],
     );
   }
 }
@@ -460,31 +527,33 @@ class MyApp extends StatelessWidget {
 
 ### Explicación del ejemplo
 
-- `title` es lo que se ve siempre, la pregunta.
-- `children` es la lista de widgets que aparecen al desplegar. Aquí es un solo texto con `Padding`.
-- La flecha de la derecha y la animación las pone el widget solo. Yo no manejo ningún estado.
+- `steps` es la lista de pasos. Cada `Step` tiene un `title` (lo que se ve siempre) y un `content` (lo que se ve solo cuando ese paso está abierto).
+- `currentStep` dice cuál paso está abierto. Lo guardo en `pasoActual` dentro de un `StatefulWidget`.
+- Los botones "Continue" y "Cancel" llaman a `onStepContinue` y `onStepCancel`. Ahí subo o bajo `pasoActual` con `setState`.
+- Los `if` evitan pasarme del último paso (índice 2) o bajar de 0.
 
 **Lo que pasó cuando lo rompí a propósito:**
-- Si pongo `children: []`, la fila se ve igual y la flecha gira, pero no se abre nada. Funciona, aunque no tiene sentido.
-- Si pongo 10 `ExpansionTile` dentro de un `Column` y los abro, aparece el error de *overflow*. Se arregla cambiando el `Column` por un `ListView`.
+- Si quito el `setState` de `onStepContinue`, el botón "Continue" se ve pero no pasa nada. Confirma que el `Stepper` no maneja su propio estado.
+- Si quito el `if (pasoActual < 2)` y presiono "Continue" en el último paso, `currentStep` queda en 3 y solo hay 3 pasos (0, 1, 2): sale un error o ya no queda ningún paso abierto.
+- Si quito `onStepContinue` completo, el botón "Continue" queda deshabilitado (gris).
 
 ### Propiedades importantes
 
 | Propiedad | Qué hace | Valor de ejemplo |
 |---|---|---|
-| `title` | Widget principal de la fila, siempre visible. | `Text('Finca La Esperanza')` |
-| `subtitle` | Texto secundario debajo del título. | `Text('Rionegro · 4 productos')` |
-| `leading` | Widget a la izquierda del título. | `Icon(Icons.agriculture)` |
-| `trailing` | Reemplaza la flecha por otro widget. | `Icon(Icons.add)` |
-| `children` | Lo que se muestra al desplegar. | `[ListTile(...), ListTile(...)]` |
-| `initiallyExpanded` | Si arranca abierto. Solo aplica en la primera construcción. | `true` |
-| `onExpansionChanged` | Se ejecuta al abrir o cerrar y recibe `true` o `false`. | `(abierto) => print(abierto)` |
-| `backgroundColor` / `collapsedBackgroundColor` | Color de fondo cuando está abierto / cerrado. | `Colors.green.shade50` |
-| `childrenPadding` | Margen interno del contenido desplegado. | `EdgeInsets.symmetric(horizontal: 16)` |
+| `steps` | Lista de pasos (`Step`). Es obligatoria. | `[Step(...), Step(...)]` |
+| `currentStep` | Índice del paso abierto. | `pasoActual` |
+| `onStepContinue` | Se ejecuta al presionar continuar. Aquí avanzo el paso. | `() => setState(() => pasoActual++)` |
+| `onStepCancel` | Se ejecuta al presionar cancelar o atrás. | `() => setState(() => pasoActual--)` |
+| `onStepTapped` | Se ejecuta al tocar el título de un paso; recibe su índice. | `(i) => setState(() => pasoActual = i)` |
+| `type` | Pasos en vertical (por defecto) u horizontal. | `StepperType.horizontal` |
+| `controlsBuilder` | Reemplaza los botones por defecto por los míos. | `(context, details) => Row(...)` |
+| `Step.state` | Estado del paso: cambia el ícono del círculo. | `StepState.complete` |
+| `Step.isActive` | Si el círculo del paso se pinta con el color principal. | `pasoActual >= 1` |
 
 ### Ejemplo personalizado
 
-Lista de **productores cercanos**. Cada uno se despliega y muestra sus productos. El primero viene abierto y el ícono cambia según si la fila está abierta o cerrada.
+Proceso de compra en Mercado Campesino, **horizontal**, con botones propios en español, pasos que se marcan como completos, validación de la dirección y un botón de "Confirmar pedido" en el último paso.
 
 ```dart
 import 'package:flutter/material.dart';
@@ -499,84 +568,154 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       theme: ThemeData(colorSchemeSeed: Colors.green),
       home: Scaffold(
-        appBar: AppBar(title: const Text('Productores cercanos')),
-        body: const ListaProductores(),
+        appBar: AppBar(title: const Text('Finalizar compra')),
+        body: const CompraStepper(),
       ),
     );
   }
 }
 
-class Productor {
-  final String nombre;
-  final String municipio;
-  final List<String> productos;
-  const Productor(this.nombre, this.municipio, this.productos);
-}
-
-const productores = [
-  Productor('Finca La Esperanza', 'Rionegro', ['Papa criolla', 'Arveja', 'Mora']),
-  Productor('Huerta Doña Rosa', 'Marinilla', ['Lechuga', 'Cilantro']),
-  Productor('Lácteos El Ordeño', 'San Pedro', ['Queso campesino', 'Kumis', 'Cuajada']),
-];
-
-class ListaProductores extends StatefulWidget {
-  const ListaProductores({super.key});
+class CompraStepper extends StatefulWidget {
+  const CompraStepper({super.key});
 
   @override
-  State<ListaProductores> createState() => _ListaProductoresState();
+  State<CompraStepper> createState() => _CompraStepperState();
 }
 
-class _ListaProductoresState extends State<ListaProductores> {
-  final Set<int> abiertos = {0};
+class _CompraStepperState extends State<CompraStepper> {
+  int paso = 0;
+  final direccionCtrl = TextEditingController();
+  bool direccionConError = false;
+  String metodoPago = 'Efectivo';
+
+  StepState _estado(int i) {
+    if (i == 1 && direccionConError) return StepState.error;
+    if (paso > i) return StepState.complete;
+    if (paso == i) return StepState.editing;
+    return StepState.indexed;
+  }
+
+  void _continuar() {
+    if (paso == 1 && direccionCtrl.text.trim().isEmpty) {
+      setState(() => direccionConError = true);
+      return;
+    }
+    if (paso < 2) {
+      setState(() {
+        direccionConError = false;
+        paso++;
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Pedido confirmado. Pago: $metodoPago')),
+      );
+    }
+  }
+
+  Widget _opcionPago(String metodo, IconData icono) {
+    final elegido = metodoPago == metodo;
+    return ListTile(
+      leading: Icon(icono),
+      title: Text(metodo),
+      trailing: Icon(elegido ? Icons.check_circle : Icons.circle_outlined,
+          color: elegido ? Colors.green : Colors.grey),
+      onTap: () => setState(() => metodoPago = metodo),
+    );
+  }
+
+  @override
+  void dispose() {
+    direccionCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: productores.length,
-      itemBuilder: (context, i) {
-        final p = productores[i];
-        final abierto = abiertos.contains(i);
-        return ExpansionTile(
-          initiallyExpanded: i == 0,
-          leading: Icon(abierto ? Icons.storefront : Icons.agriculture),
-          title: Text(p.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text('${p.municipio} · ${p.productos.length} productos'),
-          backgroundColor: Colors.green.shade50,
-          collapsedBackgroundColor: Colors.white,
-          childrenPadding: const EdgeInsets.only(left: 24, bottom: 8),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          onExpansionChanged: (estaAbierto) {
-            setState(() {
-              estaAbierto ? abiertos.add(i) : abiertos.remove(i);
-            });
-          },
-          children: [
-            for (final producto in p.productos)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text('• $producto'),
+    return Stepper(
+      type: StepperType.horizontal,
+      currentStep: paso,
+      onStepContinue: _continuar,
+      onStepCancel: paso == 0 ? null : () => setState(() => paso--),
+      onStepTapped: (i) {
+        if (i < paso) setState(() => paso = i); // solo se puede volver atrás
+      },
+      controlsBuilder: (context, details) {
+        final esUltimo = details.stepIndex == 2;
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Row(
+            children: [
+              FilledButton(
+                onPressed: details.onStepContinue,
+                child: Text(esUltimo ? 'Confirmar pedido' : 'Siguiente'),
               ),
-          ],
+              const SizedBox(width: 12),
+              if (details.stepIndex > 0)
+                TextButton(
+                  onPressed: details.onStepCancel,
+                  child: const Text('Atrás'),
+                ),
+            ],
+          ),
         );
       },
+      steps: [
+        Step(
+          title: const Text('Carrito'),
+          isActive: paso >= 0,
+          state: _estado(0),
+          content: const Column(
+            children: [
+              ListTile(title: Text('Papa criolla x 1 kg'), trailing: Text('\$4.500')),
+              ListTile(title: Text('Mora x 1 lb'), trailing: Text('\$6.000')),
+            ],
+          ),
+        ),
+        Step(
+          title: const Text('Dirección'),
+          isActive: paso >= 1,
+          state: _estado(1),
+          content: TextField(
+            controller: direccionCtrl,
+            decoration: InputDecoration(
+              labelText: 'Dirección de entrega',
+              errorText: direccionConError ? 'Escribe una dirección' : null,
+            ),
+          ),
+        ),
+        Step(
+          title: const Text('Pago'),
+          isActive: paso >= 2,
+          state: _estado(2),
+          content: Column(
+            children: [
+              _opcionPago('Efectivo', Icons.payments),
+              _opcionPago('Transferencia', Icons.account_balance),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 ```
 
 **Qué cambié respecto al mínimo:**
-- Los datos salen de una lista de objetos `Productor` y no están escritos a mano, como sería en la app real.
-- Uso `ListView.builder` para que no haya desbordamiento aunque abra todos.
-- Con `initiallyExpanded: i == 0` el primer productor arranca abierto.
-- Con `onExpansionChanged` guardo qué filas están abiertas y cambio el `leading` (finca o tienda).
-- Los colores cambian según el estado, con `backgroundColor` y `collapsedBackgroundColor`, y el contenido va alineado a la izquierda con sangría (`childrenPadding`, `expandedCrossAxisAlignment`).
+- Con `type: StepperType.horizontal` los pasos quedan en una fila arriba, como en las apps de compras. Usé títulos cortos para que quepan.
+- Con `controlsBuilder` cambié los botones "Continue/Cancel" por "Siguiente/Atrás" en español. En el último paso el botón dice "Confirmar pedido" y en el primero no aparece "Atrás".
+- Cada `Step` tiene `state` calculado: los pasos ya hechos salen con chulo (`complete`), el actual con lápiz (`editing`) y la dirección vacía en rojo (`error`). `isActive` pinta de verde los círculos hasta el paso actual.
+- En `_continuar` valido que la dirección no esté vacía antes de avanzar.
+- Con `onStepTapped` se puede volver a un paso anterior tocando su título, pero no saltarse pasos hacia adelante.
+- `onStepCancel` es `null` en el primer paso, así no se puede retroceder desde el inicio.
 
 ### Dónde lo usaría en Mercado Campesino
 
-- En la **lista de productores cercanos**, para ver sus productos sin entrar a otra pantalla.
-- En la sección de **preguntas frecuentes** (pagos, envíos, devoluciones).
-- En el **detalle de un pedido**, para desplegar la lista de productos de cada productor.
+- En el **proceso de compra**: carrito → dirección → pago → confirmación.
+- En el **registro de un productor**: datos personales → datos de la finca → productos que vende.
+- Al **publicar un producto nuevo**: foto → precio y cantidad → disponibilidad.
 
 ### Fuentes y ayudas usadas
 
-- Documentación oficial: https://api.flutter.dev/flutter/material/ExpansionTile-class.html
+- Documentación oficial: https://api.flutter.dev/flutter/material/Stepper-class.html
+- Documentación de `Step`: https://api.flutter.dev/flutter/material/Step-class.html
+- Apoyo de IA (Claude, de Anthropic) para organizar el documento y armar un primer borrador de los ejemplos. Ejecuté, modifiqué y rompí los ejemplos en DartPad para verificar cómo se comportan.
