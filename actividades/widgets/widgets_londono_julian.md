@@ -580,4 +580,3 @@ class _ListaProductoresState extends State<ListaProductores> {
 ### Fuentes y ayudas usadas
 
 - Documentación oficial: https://api.flutter.dev/flutter/material/ExpansionTile-class.html
-- Apoyo de IA (Claude, de Anthropic) para organizar el documento y armar un primer borrador de los ejemplos. Ejecuté, modifiqué y rompí los ejemplos en DartPad para verificar cómo se comportan.
